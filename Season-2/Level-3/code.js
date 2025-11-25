@@ -15,7 +15,7 @@ const libxmljs = require("libxmljs");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { exec } = require("node:child_process");
+const { exec, execFile } = require("node:child_process");
 const app = express();
 
 app.use(bodyParser.json());
@@ -36,6 +36,15 @@ app.post("/ufo/upload", upload.single("file"), (req, res) => {
 
   res.status(200).send("File uploaded successfully.");
 });
+
+// Only allowlisted admin commands can be executed by the "secret feature"
+const ADMIN_COMMANDS = {
+  "date": { cmd: "date", args: [] },
+  "uptime": { cmd: "uptime", args: [] },
+  "whoami": { cmd: "whoami", args: [] },
+  "hostname": { cmd: "hostname", args: [] }
+  // Add more allowed commands if needed
+};
 
 app.post("/ufo", (req, res) => {
   const contentType = req.headers["content-type"];
@@ -70,14 +79,20 @@ app.post("/ufo", (req, res) => {
         xmlDoc.toString().includes(".admin")
       ) {
         extractedContent.forEach((command) => {
-          exec(command, (err, output) => {
-            if (err) {
-              console.error("could not execute command: ", err);
-              return;
-            }
-            console.log("Output: \n", output);
-            res.status(200).set("Content-Type", "text/plain").send(output);
-          });
+          // Only run if fully matches allowlist key
+          const allowed = ADMIN_COMMANDS[command.trim()];
+          if (allowed) {
+            execFile(allowed.cmd, allowed.args, (err, output) => {
+              if (err) {
+                console.error("could not execute command: ", err);
+                return;
+              }
+              console.log("Output: \n", output);
+              res.status(200).set("Content-Type", "text/plain").send(output);
+            });
+          } else {
+            res.status(403).set("Content-Type", "text/plain").send("Forbidden command");
+          }
         });
       } else {
         res
